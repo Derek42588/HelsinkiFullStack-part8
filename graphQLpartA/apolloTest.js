@@ -1,9 +1,10 @@
-const { ApolloServer, AuthenticationError, UserInputError, gql } = require('apollo-server')
+const { ApolloServer, AuthenticationError, UserInputError, gql, PubSub } = require('apollo-server')
 const mongoose = require('mongoose')
 const Person = require('./models/Person')
 const User = require('./models/user')
 const uuid = require('uuid/v1')
 const config = require ('./utils/config')
+const pubsub = new PubSub()
 
 const jwt = require('jsonwebtoken')
 
@@ -14,7 +15,7 @@ mongoose.set('useFindAndModify', false)
 
 console.log('connecting to', config.MONGODB_URI)
 
-mongoose.connect(config.MONGODB_URI, { useNewUrlParser: true })
+mongoose.connect(config.MONGODB_URI, {useUnifiedTopology: true, useNewUrlParser: true })
   .then(() => {
     console.log('connected to MongoDB')
   })
@@ -48,14 +49,20 @@ let persons = [
 
 const typeDefs = gql`
 
+  type Subscription {
+    personAdded: Person!
+  }    
+
   type Address {
       street: String!
       city: String!
   }
+
   type Person {
     name: String!
     phone: String
     address: Address!
+    friendOf: [User!]!
     id: ID!
   }
   
@@ -122,12 +129,21 @@ const resolvers = {
     }
   },
   Person: {
-      address: (root) => {
-          return {
-              street: root.street,
-              city: root.city
-          }
+    address: (root) => {
+      return { 
+        street: root.street,
+        city: root.city
       }
+    },
+    friendOf: async (root) => {
+      const friends = await User.find({
+        friends: {
+          $in: [root._id]
+        } 
+      })
+
+      return friends
+    }
   },
   Mutation: {
       addPerson: async (root, args, context) => {
@@ -148,6 +164,8 @@ const resolvers = {
             invalidArgs: args,
           })
         }
+
+        pubsub.publish('PERSON_ADDED', { personAdded: person })
           return person
       },
       editNumber: async (root, args) => {
@@ -204,7 +222,12 @@ const resolvers = {
         return currentUser
       }
       
-  }
+  },
+  Subscription: {
+    personAdded: {
+      subscribe: () => pubsub.asyncIterator(['PERSON_ADDED'])
+    },
+  },
 }
 
 const server = new ApolloServer({
@@ -223,6 +246,8 @@ const server = new ApolloServer({
 })
 
 
-server.listen().then(({ url }) => {
+server.listen().then(({ url, subscriptionsUrl }) => {
   console.log(`Server ready at ${url}`)
+  console.log(`Subscriptions ready at ${subscriptionsUrl}`)
+
 })

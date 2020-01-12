@@ -1,5 +1,5 @@
 const config = require('./utils/config')
-const { ApolloServer, AuthenticationError, UserInputError, gql } = require('apollo-server')
+const { ApolloServer, AuthenticationError, UserInputError, PubSub, gql } = require('apollo-server')
 const uuid = require ('uuid/v1')
 const mongoose = require('mongoose')
 const Book = require('./models/book')
@@ -7,11 +7,14 @@ const Author = require ('./models/author')
 const User = require ('./models/user')
 const jwt = require ('jsonwebtoken')
 
+const pubsub = new PubSub()
+
+
 mongoose.set('useFindAndModify', false)
 
 console.log('connecting to', config.MONGODB_URI)
 
-mongoose.connect(config.MONGODB_URI, { useNewUrlParser: true })
+mongoose.connect(config.MONGODB_URI, {useUnifiedTopology: true, useNewUrlParser: true })
   .then(() => {
     console.log('connected to MongoDB')
   })
@@ -20,6 +23,11 @@ mongoose.connect(config.MONGODB_URI, { useNewUrlParser: true })
   })
   
   const typeDefs = gql`
+
+  type Subscription {
+    bookAdded: Book!
+  }    
+  
     type Book {
         title: String!
         published: Int!
@@ -87,16 +95,16 @@ mongoose.connect(config.MONGODB_URI, { useNewUrlParser: true })
       },
       allBooks: async (root, args) => {
           if (!args.author && !args.genre) {
-              return Book.find({})
+              return Book.find({}).populate('author')
           } else if (args.author && !args.genre) {
             const author = await Author.findOne({name: args.author})
             console.log(author)
-          return Book.find({author: { $in: author.id } } )
+          return Book.find({author: { $in: author.id } } ).populate('author')
           } else if (args.genre && !args.author) {
-            return Book.find({ genres: { $in: args.genre}})
+            return Book.find({ genres: { $in: args.genre}}).populate('author')
           } else {
               const author = await Author.findOne({name: args.author})
-              return Book.find({author: {$in: author.id}, genres: {$in: args.genre}})
+              return Book.find({author: {$in: author.id}, genres: {$in: args.genre}}).populate('author')
           }
       },
       allAuthors: () => Author.find({}),
@@ -107,11 +115,11 @@ mongoose.connect(config.MONGODB_URI, { useNewUrlParser: true })
           return books.length
         }
     },
-    Book: {
-      author: (root) => {
-        return Author.findOne({_id: root.author})
-      }
-    },
+    // Book: {
+    //   author: (root) => {
+    //     return Author.findOne({_id: root.author})
+    //   }
+    // },
     Mutation: {
         addBook: async (root, args, context) => {
           const author = await Author.findOne({name: args.author})
@@ -144,6 +152,8 @@ mongoose.connect(config.MONGODB_URI, { useNewUrlParser: true })
               invalidArgs: args,
             })
           }
+
+          pubsub.publish('BOOK_ADDED', { bookAdded: book })
           return book
         },
         editAuthor: async (root, args, context) => {
@@ -199,7 +209,12 @@ mongoose.connect(config.MONGODB_URI, { useNewUrlParser: true })
           await currentUser.save()
           return currentUser
         }
-    }
+    },
+    Subscription: {
+      bookAdded: {
+        subscribe: () => pubsub.asyncIterator(['BOOK_ADDED'])
+      },
+    },
   }
   
   const server = new ApolloServer({
@@ -217,7 +232,9 @@ mongoose.connect(config.MONGODB_URI, { useNewUrlParser: true })
     }
   })
   
-  server.listen().then(({ url }) => {
+  server.listen().then(({ url, subscriptionsUrl }) => {
     console.log(`Server ready at ${url}`)
+    console.log(`Subscriptions ready at ${subscriptionsUrl}`)
+
   })
   

@@ -9,13 +9,15 @@
     "apollo-boost": "^0.4.7",
     "apollo-link": "^1.2.13",
     "apollo-link-context": "^1.0.19",
+    "apollo-link-ws": "^1.0.19",
     "graphql": "^14.5.8",
     "mongoose": "^5.8.2",
     "mongoose-unique-validator": "^2.0.3",
     "react": "^16.12.0",
     "react-apollo": "^3.1.0",
     "react-dom": "^16.12.0",
-    "react-scripts": "3.3.0"
+    "react-scripts": "3.3.0",
+    "subscriptions-transport-ws": "^0.9.16"
   },
   "scripts": {
     "start": "react-scripts start",

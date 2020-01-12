@@ -3,7 +3,7 @@ import Authors from './components/Authors'
 import Books from './components/Books'
 import NewBook from './components/NewBook'
 import LoginForm from './components/LoginForm'
-import { useQuery, useMutation, useApolloClient } from 'react-apollo'
+import { useQuery, useMutation, useSubscription, useApolloClient } from 'react-apollo'
 import { gql } from 'apollo-boost'
 
 const ALL_AUTHORS = gql`
@@ -25,6 +25,21 @@ query {
 }
 `
 
+const BOOK_ADDED = gql`
+  subscription {
+    bookAdded{
+      title
+      author {
+        name
+        born
+      }
+      published
+      genres
+      id
+    }
+  }
+`
+
 const ALL_BOOKS = gql`
 {
   allBooks {
@@ -35,6 +50,7 @@ const ALL_BOOKS = gql`
     }
     published
     genres
+    id
   }
 }
 `
@@ -48,6 +64,7 @@ const BOOKS_BY_GENRE = gql`
     }
     published
     genres
+    id
   }
 }
 
@@ -114,7 +131,47 @@ const App = () => {
   })
 
 
+  const notify = (message) => {
+    setErrorMessage(message)
+    setTimeout(() => {
+      setErrorMessage(null)
+    }, 10000)
+  }
+
   const client = useApolloClient()
+
+  const updateCacheWith = (addedBook) => {
+    const includedIn = (set, object) => set.map(p => p.id).includes(object.id)  
+
+    const dInStoreAll = client.readQuery({ query: ALL_BOOKS })
+    
+    const dInStoreFiltered = client.readQuery({ query: BOOKS_BY_GENRE,
+      variables: {genre: ""} })
+
+    console.log(dInStoreAll.allBooks)
+    if (!includedIn(dInStoreAll.allBooks, addedBook)) {
+      console.log(dInStoreAll.allBooks)
+      dInStoreAll.allBooks.push(addedBook)
+      dInStoreFiltered.allBooks.push(addedBook)
+      client.writeQuery({
+        query: ALL_BOOKS,
+        data: dInStoreAll
+      })
+      client.writeQuery({
+        query: BOOKS_BY_GENRE,
+        data: dInStoreFiltered
+      })
+    }   
+  }
+
+
+  useSubscription(BOOK_ADDED, {
+    onSubscriptionData: ({ subscriptionData }) => {
+      const addedBook = subscriptionData.data.bookAdded
+      notify(`${addedBook.title} added`)
+      updateCacheWith(addedBook)
+    }
+  })
 
   const handleError = (error) => {
     setErrorMessage(error.graphQLErrors[0].message)
@@ -129,6 +186,7 @@ const App = () => {
     client.resetStore()
   }
 
+
   const errorNotification = () => errorMessage &&
   <div style={{ color: 'red' }}>
     {errorMessage}
@@ -136,7 +194,9 @@ const App = () => {
 
   const [addBook] = useMutation(CREATE_BOOK, {
     onError: handleError,
-    refetchQueries: [{ query: ALL_AUTHORS}, {query: ALL_BOOKS}, {query: USER}]
+    update: (store, response) => {
+      updateCacheWith(response.data.addPerson)
+    }
   })
 
   const [makeFavorite] = useMutation(MAKE_FAVORITE, {
@@ -147,8 +207,10 @@ const App = () => {
   const [loginUser] = useMutation(LOGIN, {
     onError: handleError,
     update: (store, response) => {
+      user.refetch()
       const dataInStore = store.readQuery({query: USER})
-      console.log(dataInStore.user)
+      console.log(dataInStore)
+      console.log(response.data)
       dataInStore.user.push(response.data.user)
       store.writeQuery({
         query: USER,
