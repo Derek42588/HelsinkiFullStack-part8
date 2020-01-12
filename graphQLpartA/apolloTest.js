@@ -1,20 +1,20 @@
-const { ApolloServer, UserInputError, gql } = require('apollo-server')
+const { ApolloServer, AuthenticationError, UserInputError, gql } = require('apollo-server')
 const mongoose = require('mongoose')
 const Person = require('./models/Person')
 const User = require('./models/user')
 const uuid = require('uuid/v1')
+const config = require ('./utils/config')
 
 const jwt = require('jsonwebtoken')
 
-const JWT_SECRET = 'SECRET_SECRET_KEY'
+const JWT_SECRET = process.env.SECRET
 
 mongoose.set('useFindAndModify', false)
 
-// mongodb_uri 
 
-console.log('connecting to', MONGODB_URI)
+console.log('connecting to', config.MONGODB_URI)
 
-mongoose.connect(MONGODB_URI, { useNewUrlParser: true })
+mongoose.connect(config.MONGODB_URI, { useNewUrlParser: true })
   .then(() => {
     console.log('connected to MongoDB')
   })
@@ -130,7 +130,7 @@ const resolvers = {
       }
   },
   Mutation: {
-      addPerson: (root, args) => {
+      addPerson: async (root, args, context) => {
         const person = new Person({...args})
         const currentUser = context.currentUser
         
@@ -150,7 +150,7 @@ const resolvers = {
         }
           return person
       },
-      editNumber: (root, args) => {
+      editNumber: async (root, args) => {
          const person = await Person.findOne({name: args.name})
          person.phone = args.phone
 
@@ -212,7 +212,7 @@ const server = new ApolloServer({
   resolvers,
   context: async ({ req }) => {
     const auth = req ? req.headers.authorization : null
-    if (auth && auth.toLowerCase().startsWith('bearer ' )) {
+    if (auth && auth.toLowerCase().startsWith('bearer ')) {
       const decodedToken = jwt.verify(
         auth.substring(7), JWT_SECRET
       )
@@ -221,6 +221,7 @@ const server = new ApolloServer({
     }
   }
 })
+
 
 server.listen().then(({ url }) => {
   console.log(`Server ready at ${url}`)

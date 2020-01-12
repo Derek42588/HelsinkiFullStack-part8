@@ -5,7 +5,7 @@ const schema = new mongoose.Schema({
     type: String,
     required: true,
     unique: true,
-    minlength: 4
+    minlength: 2
   },
   published: {
     type: Number,
@@ -13,6 +13,10 @@ const schema = new mongoose.Schema({
   author: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Author'
+  },
+  testmodel: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Testmodel'
   },
   genres: [
     { type: String}
